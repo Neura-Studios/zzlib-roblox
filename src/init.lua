@@ -8,6 +8,7 @@
 -- the COPYING file or http://www.wtfpl.net/ for more details.
 
 local infl = require(script.inflatebit32)
+type BitStream = infl.BitStream
 
 local zzlib = {}
 
@@ -41,7 +42,7 @@ local function arraytostr(array)
 	return str
 end
 
-local function inflate_gzip(bs)
+local function inflate_gzip(bs: BitStream)
 	local id1, id2, cm, flg = bs.buf:byte(1, 4)
 	if id1 ~= 31 or id2 ~= 139 then
 		error("invalid gzip header")
@@ -51,7 +52,7 @@ local function inflate_gzip(bs)
 	end
 	bs.pos = 11
 	if bit32.band(flg, 4) ~= 0 then
-		local xl1, xl2 = bs.buf.byte(bs.pos, bs.pos + 1)
+		local xl1, xl2 = bs.buf:byte(bs.pos, bs.pos + 1)
 		local xlen = xl2 * 256 + xl1
 		bs.pos = bs.pos + xlen + 2
 	end
@@ -88,7 +89,7 @@ local function adler32(s)
 	return s2 * 65536 + s1
 end
 
-local function inflate_zlib(bs)
+local function inflate_zlib(bs: BitStream)
 	local cmf = bs.buf:byte(1)
 	local flg = bs.buf:byte(2)
 	if (cmf * 256 + flg) % 31 ~= 0 then
