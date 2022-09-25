@@ -9,11 +9,25 @@
 
 local inflate = {}
 
+export type BitStream = {
+	file: any,
+	buf: string,
+	len: number,
+	pos: number,
+	b: number,
+	n: number,
+	flushb: any,
+	peekb: any,
+	getb: any,
+	getv: any,
+	close: any,
+}
+
 function inflate.bitstream_init(file)
-	local bs = {
+	local bs: BitStream = {
 		file = file, -- the open file handle
-		buf = nil, -- character buffer
-		len = nil, -- length of character buffer
+		buf = "", -- character buffer
+		len = 0, -- length of character buffer
 		pos = 1, -- position in char buffer
 		b = 0, -- bit buffer
 		n = 0, -- number of bits in buffer
