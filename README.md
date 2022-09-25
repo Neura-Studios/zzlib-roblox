@@ -23,9 +23,9 @@ There are various ways of using the library.
 
 Read a file into a string, call the depacker, and get a string with the unpacked file contents, as follows:
 
-```
+```lua
 -- import the zzlib library
-zzlib = require("zzlib")
+local zzlib = require(...Packages.zzlib)
 ...
 
 if use_gzip then
@@ -41,9 +41,9 @@ end
 
 Read a file into a string, call the depacker, and get a string with the unpacked contents of the chosen file, as follows:
 
-```
+```lua
 -- import the zzlib library
-zzlib = require("zzlib")
+local zzlib = require(...Packages.zzlib)
 ...
 
 -- extract a specific file from the input zip file
@@ -54,7 +54,7 @@ output = zzlib.unzip(input,"lua-5.3.4/README")
 
 The `zzlib.files()` iterator function allows you to span the whole list of files in a ZIP archive, as follows:
 
-```
+```lua
 for _,name,offset,size,packed,crc in zzlib.files(input) do
   print(string.format("%10d",size),name)
 end
@@ -62,12 +62,12 @@ end
 
 During such a loop, the `packed` boolean variable is set to `true` if the current file is packed. You may then decide to unpack it using this function call:
 
-```
+```lua
 output = zzlib.unzip(input,offset,crc)
 ```
 
 If the file is not packed, then you can directly extract its contents using `string.sub`:
 
-```
+```lua
 output = input:sub(offset,offset+size-1)
 ```
