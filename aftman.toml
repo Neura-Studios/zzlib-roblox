@@ -6,3 +6,4 @@
 selene = "Kampfkarren/selene@0.21.1"   # Lua linter
 wally = "UpliftGames/wally@0.3.1"      # Package manager
 stylua = "JohnnyMorganz/StyLua@0.15.1" # Stylizer
+"stylua.EXE" = "JohnnyMorganz/StyLua@0.15.1" # Precommit weirdness
