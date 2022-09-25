@@ -9,11 +9,6 @@
 
 local inflate = {}
 
-local bit = bit32
-
-inflate.band = bit.band
-inflate.rshift = bit.rshift
-
 function inflate.bitstream_init(file)
 	local bs = {
 		file = file, -- the open file handle
@@ -26,7 +21,7 @@ function inflate.bitstream_init(file)
 	-- get rid of n first bits
 	function bs:flushb(n)
 		self.n = self.n - n
-		self.b = bit.rshift(self.b, n)
+		self.b = bit32.rshift(self.b, n)
 	end
 	-- peek a number of n bits from stream
 	function bs:peekb(n)
@@ -36,26 +31,26 @@ function inflate.bitstream_init(file)
 				self.len = self.buf:len()
 				self.pos = 1
 			end
-			self.b = self.b + bit.lshift(self.buf:byte(self.pos), self.n)
+			self.b = self.b + bit32.lshift(self.buf:byte(self.pos), self.n)
 			self.pos = self.pos + 1
 			self.n = self.n + 8
 		end
-		return bit.band(self.b, bit.lshift(1, n) - 1)
+		return bit32.band(self.b, bit32.lshift(1, n) - 1)
 	end
 	-- get a number of n bits from stream
 	function bs:getb(n)
 		local ret = bs:peekb(n)
 		self.n = self.n - n
-		self.b = bit.rshift(self.b, n)
+		self.b = bit32.rshift(self.b, n)
 		return ret
 	end
 	-- get next variable-size of maximum size=n element from stream, according to Huffman table
 	function bs:getv(hufftable, n)
 		local e = hufftable[bs:peekb(n)]
-		local len = bit.band(e, 15)
-		local ret = bit.rshift(e, 4)
+		local len = bit32.band(e, 15)
+		local ret = bit32.rshift(e, 4)
 		self.n = self.n - len
-		self.b = bit.rshift(self.b, len)
+		self.b = bit32.rshift(self.b, len)
 		return ret
 	end
 	function bs:close()
@@ -99,7 +94,7 @@ local function hufftable_create(depths)
 			local code2 = next_code[len]
 			local rcode = 0
 			for j = 1, len do
-				rcode = rcode + bit.lshift(bit.band(1, bit.rshift(code2, j - 1)), len - j)
+				rcode = rcode + bit32.lshift(bit32.band(1, bit32.rshift(code2, j - 1)), len - j)
 			end
 			for j = 0, 2 ^ nbits - 1, 2 ^ len do
 				table[j + rcode] = e
@@ -123,8 +118,8 @@ local function block_loop(out, bs, nlit, ndist, littable, disttable)
 			if lit < 265 then
 				size = size + lit - 257
 			elseif lit < 285 then
-				nbits = bit.rshift(lit - 261, 2)
-				size = size + bit.lshift(bit.band(lit - 261, 3) + 4, nbits)
+				nbits = bit32.rshift(lit - 261, 2)
+				size = size + bit32.lshift(bit32.band(lit - 261, 3) + 4, nbits)
 			else
 				size = 258
 			end
@@ -135,8 +130,8 @@ local function block_loop(out, bs, nlit, ndist, littable, disttable)
 			if v < 4 then
 				dist = dist + v
 			else
-				nbits = bit.rshift(v - 2, 1)
-				dist = dist + bit.lshift(bit.band(v, 1) + 2, nbits)
+				nbits = bit32.rshift(v - 2, 1)
+				dist = dist + bit32.lshift(bit32.band(v, 1) + 2, nbits)
 				dist = dist + bs:getb(nbits)
 			end
 			local p = #out - dist + 1
@@ -220,13 +215,13 @@ local function block_static(out, bs)
 end
 
 local function block_uncompressed(out, bs)
-	bs:flushb(bit.band(bs.n, 7))
+	bs:flushb(bit32.band(bs.n, 7))
 	local len = bs:getb(16)
 	if bs.n > 0 then
 		error("Unexpected.. should be zero remaining bits in buffer.")
 	end
 	local nlen = bs:getb(16)
-	if bit.bxor(len, nlen) ~= 65535 then
+	if bit32.bxor(len, nlen) ~= 65535 then
 		error("LEN and NLEN don't match")
 	end
 	for i = bs.pos, bs.pos + len - 1 do
@@ -251,7 +246,7 @@ function inflate.main(bs)
 			error("unsupported block type")
 		end
 	until last == 1
-	bs:flushb(bit.band(bs.n, 7))
+	bs:flushb(bit32.band(bs.n, 7))
 	return output
 end
 
@@ -262,17 +257,20 @@ function inflate.crc32(s, crc)
 		for i = 0, 255 do
 			local r = i
 			for _ = 1, 8 do
-				r = bit.bxor(bit.rshift(r, 1), bit.band(0xedb88320, bit.bnot(bit.band(r, 1) - 1)))
+				r = bit32.bxor(
+					bit32.rshift(r, 1),
+					bit32.band(0xedb88320, bit32.bnot(bit32.band(r, 1) - 1))
+				)
 			end
 			crc32_table[i] = r
 		end
 	end
-	crc = bit.bnot(crc or 0)
+	crc = bit32.bnot(crc or 0)
 	for i = 1, #s do
 		local c = s:byte(i)
-		crc = bit.bxor(crc32_table[bit.bxor(c, bit.band(crc, 0xff))], bit.rshift(crc, 8))
+		crc = bit32.bxor(crc32_table[bit32.bxor(c, bit32.band(crc, 0xff))], bit32.rshift(crc, 8))
 	end
-	crc = bit.bnot(crc)
+	crc = bit32.bnot(crc)
 	if crc < 0 then
 		-- in Lua < 5.2, sign extension was performed
 		crc = crc + 4294967296

@@ -7,7 +7,6 @@
 -- To Public License, Version 2, as published by Sam Hocevar. See
 -- the COPYING file or http://www.wtfpl.net/ for more details.
 
-local unpack = table.unpack or unpack
 local infl = require(script.inflatebit32)
 
 local zzlib = {}
@@ -51,20 +50,20 @@ local function inflate_gzip(bs)
 		error("only deflate format is supported")
 	end
 	bs.pos = 11
-	if infl.band(flg, 4) ~= 0 then
+	if bit32.band(flg, 4) ~= 0 then
 		local xl1, xl2 = bs.buf.byte(bs.pos, bs.pos + 1)
 		local xlen = xl2 * 256 + xl1
 		bs.pos = bs.pos + xlen + 2
 	end
-	if infl.band(flg, 8) ~= 0 then
+	if bit32.band(flg, 8) ~= 0 then
 		local pos = bs.buf:find("\0", bs.pos)
 		bs.pos = pos + 1
 	end
-	if infl.band(flg, 16) ~= 0 then
+	if bit32.band(flg, 16) ~= 0 then
 		local pos = bs.buf:find("\0", bs.pos)
 		bs.pos = pos + 1
 	end
-	if infl.band(flg, 2) ~= 0 then
+	if bit32.band(flg, 2) ~= 0 then
 		-- TODO: check header CRC16
 		bs.pos = bs.pos + 2
 	end
@@ -95,13 +94,13 @@ local function inflate_zlib(bs)
 	if (cmf * 256 + flg) % 31 ~= 0 then
 		error("zlib header check bits are incorrect")
 	end
-	if infl.band(cmf, 15) ~= 8 then
+	if bit32.band(cmf, 15) ~= 8 then
 		error("only deflate format is supported")
 	end
-	if infl.rshift(cmf, 4) ~= 7 then
+	if bit32.rshift(cmf, 4) ~= 7 then
 		error("unsupported window size")
 	end
-	if infl.band(flg, 32) ~= 0 then
+	if bit32.band(flg, 32) ~= 0 then
 		error("preset dictionary not implemented")
 	end
 	bs.pos = 3
