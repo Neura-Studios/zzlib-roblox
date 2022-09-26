@@ -7,12 +7,12 @@
 -- To Public License, Version 2, as published by Sam Hocevar. See
 -- the COPYING file or http://www.wtfpl.net/ for more details.
 
-local unpack = table.unpack or unpack
 local infl = require(script.inflatebit32)
+type BitStream = infl.BitStream
 
 local zzlib = {}
 
-local function arraytostr(array)
+local function arraytostr(array: { number })
 	local tmp = {}
 	local size = #array
 	local pos = 1
@@ -42,7 +42,7 @@ local function arraytostr(array)
 	return str
 end
 
-local function inflate_gzip(bs)
+local function inflate_gzip(bs: BitStream)
 	local id1, id2, cm, flg = bs.buf:byte(1, 4)
 	if id1 ~= 31 or id2 ~= 139 then
 		error("invalid gzip header")
@@ -51,26 +51,25 @@ local function inflate_gzip(bs)
 		error("only deflate format is supported")
 	end
 	bs.pos = 11
-	if infl.band(flg, 4) ~= 0 then
-		local xl1, xl2 = bs.buf.byte(bs.pos, bs.pos + 1)
+	if bit32.band(flg, 4) ~= 0 then
+		local xl1, xl2 = bs.buf:byte(bs.pos, bs.pos + 1)
 		local xlen = xl2 * 256 + xl1
 		bs.pos = bs.pos + xlen + 2
 	end
-	if infl.band(flg, 8) ~= 0 then
+	if bit32.band(flg, 8) ~= 0 then
 		local pos = bs.buf:find("\0", bs.pos)
 		bs.pos = pos + 1
 	end
-	if infl.band(flg, 16) ~= 0 then
+	if bit32.band(flg, 16) ~= 0 then
 		local pos = bs.buf:find("\0", bs.pos)
 		bs.pos = pos + 1
 	end
-	if infl.band(flg, 2) ~= 0 then
+	if bit32.band(flg, 2) ~= 0 then
 		-- TODO: check header CRC16
 		bs.pos = bs.pos + 2
 	end
 	local result = arraytostr(infl.main(bs))
 	local crc = bs:getb(8) + 256 * (bs:getb(8) + 256 * (bs:getb(8) + 256 * bs:getb(8)))
-	bs:close()
 	if crc ~= infl.crc32(result) then
 		error("checksum verification failed")
 	end
@@ -78,7 +77,7 @@ local function inflate_gzip(bs)
 end
 
 -- compute Adler-32 checksum
-local function adler32(s)
+local function adler32(s: string)
 	local s1 = 1
 	local s2 = 0
 	for i = 1, #s do
@@ -89,32 +88,31 @@ local function adler32(s)
 	return s2 * 65536 + s1
 end
 
-local function inflate_zlib(bs)
+local function inflate_zlib(bs: BitStream)
 	local cmf = bs.buf:byte(1)
 	local flg = bs.buf:byte(2)
 	if (cmf * 256 + flg) % 31 ~= 0 then
 		error("zlib header check bits are incorrect")
 	end
-	if infl.band(cmf, 15) ~= 8 then
+	if bit32.band(cmf, 15) ~= 8 then
 		error("only deflate format is supported")
 	end
-	if infl.rshift(cmf, 4) ~= 7 then
+	if bit32.rshift(cmf, 4) ~= 7 then
 		error("unsupported window size")
 	end
-	if infl.band(flg, 32) ~= 0 then
+	if bit32.band(flg, 32) ~= 0 then
 		error("preset dictionary not implemented")
 	end
 	bs.pos = 3
 	local result = arraytostr(infl.main(bs))
 	local adler = ((bs:getb(8) * 256 + bs:getb(8)) * 256 + bs:getb(8)) * 256 + bs:getb(8)
-	bs:close()
 	if adler ~= adler32(result) then
 		error("checksum verification failed")
 	end
 	return result
 end
 
-local function inflate_raw(buf, offset, crc)
+local function inflate_raw(buf: string, offset: number, crc: number?)
 	local bs = infl.bitstream_init(buf)
 	bs.pos = offset
 	local result = arraytostr(infl.main(bs))
@@ -163,7 +161,7 @@ local function nextfile(buf, p)
 	return p, name, offset, size, packed, crc
 end
 
-function zzlib.files(buf)
+function zzlib.files(buf: string)
 	local p = #buf - 21
 	if int4le(buf, p) ~= 0x06054b50 then
 		-- not sure there is a reliable way to locate the end of central directory record
@@ -174,27 +172,28 @@ function zzlib.files(buf)
 	return nextfile, buf, cdoffset
 end
 
-function zzlib.unzip(buf, arg1, arg2)
+function zzlib.unzip(buf: string, arg1: (string | number), arg2: number?)
 	if type(arg1) == "number" then
 		-- mode 1: unpack data from specified position in zip file
 		return inflate_raw(buf, arg1, arg2)
-	end
-	-- mode 2: search and unpack file from zip file
-	local filename = arg1
-	for _, name, offset, size, packed, crc in zzlib.files(buf) do
-		if name == filename then
-			local result
-			if not packed then
-				-- no compression
-				result = buf:sub(offset, offset + size - 1)
-			else
-				-- DEFLATE compression
-				result = inflate_raw(buf, offset, crc)
+	else
+		-- mode 2: search and unpack file from zip file
+		local filename = arg1
+		for _, name, offset, size, packed, crc in zzlib.files(buf) do
+			if name == filename then
+				local result
+				if not packed then
+					-- no compression
+					result = buf:sub(offset, offset + size - 1)
+				else
+					-- DEFLATE compression
+					result = inflate_raw(buf, offset, crc)
+				end
+				return result
 			end
-			return result
 		end
+		error("file '" .. filename .. "' not found in ZIP archive")
 	end
-	error("file '" .. filename .. "' not found in ZIP archive")
 end
 
 return zzlib

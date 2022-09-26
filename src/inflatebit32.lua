@@ -9,71 +9,71 @@
 
 local inflate = {}
 
-local bit = bit32
+export type BitStream = {
+	buf: string,
+	len: number,
+	pos: number,
+	b: number,
+	n: number,
+	flushb: (self: BitStream, number) -> (),
+	peekb: (self: BitStream, number) -> (number),
+	getb: (self: BitStream, number) -> (number),
+	getv: (self: BitStream, { number }, number) -> (number),
+}
 
-inflate.band = bit.band
-inflate.rshift = bit.rshift
-
-function inflate.bitstream_init(file)
-	local bs = {
-		file = file, -- the open file handle
-		buf = nil, -- character buffer
-		len = nil, -- length of character buffer
+function inflate.bitstream_init(input)
+	local bs: BitStream = {
+		buf = "", -- character buffer
+		len = 0, -- length of character buffer
 		pos = 1, -- position in char buffer
 		b = 0, -- bit buffer
 		n = 0, -- number of bits in buffer
-	}
-	-- get rid of n first bits
-	function bs:flushb(n)
-		self.n = self.n - n
-		self.b = bit.rshift(self.b, n)
-	end
-	-- peek a number of n bits from stream
-	function bs:peekb(n)
-		while self.n < n do
-			if self.pos > self.len then
-				self.buf = self.file:read(4096)
-				self.len = self.buf:len()
-				self.pos = 1
+
+		-- get rid of n first bits
+		flushb = function(self, n)
+			self.n = self.n - n
+			self.b = bit32.rshift(self.b, n)
+		end,
+
+		-- peek a number of n bits from stream
+		peekb = function(self, n)
+			while self.n < n do
+				if self.pos > self.len then
+					self.len = self.buf:len()
+					self.pos = 1
+				end
+				self.b = self.b + bit32.lshift(self.buf:byte(self.pos), self.n)
+				self.pos = self.pos + 1
+				self.n = self.n + 8
 			end
-			self.b = self.b + bit.lshift(self.buf:byte(self.pos), self.n)
-			self.pos = self.pos + 1
-			self.n = self.n + 8
-		end
-		return bit.band(self.b, bit.lshift(1, n) - 1)
-	end
-	-- get a number of n bits from stream
-	function bs:getb(n)
-		local ret = bs:peekb(n)
-		self.n = self.n - n
-		self.b = bit.rshift(self.b, n)
-		return ret
-	end
-	-- get next variable-size of maximum size=n element from stream, according to Huffman table
-	function bs:getv(hufftable, n)
-		local e = hufftable[bs:peekb(n)]
-		local len = bit.band(e, 15)
-		local ret = bit.rshift(e, 4)
-		self.n = self.n - len
-		self.b = bit.rshift(self.b, len)
-		return ret
-	end
-	function bs:close()
-		if self.file then
-			self.file:close()
-		end
-	end
-	if type(file) == "string" then
-		bs.file = nil
-		bs.buf = file
-	else
-		bs.buf = file:read(4096)
-	end
+			return bit32.band(self.b, bit32.lshift(1, n) - 1)
+		end,
+
+		-- get a number of n bits from stream
+		getb = function(self, n)
+			local ret = self:peekb(n)
+			self.n = self.n - n
+			self.b = bit32.rshift(self.b, n)
+			return ret
+		end,
+
+		-- get next variable-size of maximum size=n element from stream, according to Huffman table
+		getv = function(self, hufftable, n)
+			local e = hufftable[self:peekb(n)]
+			local len = bit32.band(e, 15)
+			local ret = bit32.rshift(e, 4)
+			self.n = self.n - len
+			self.b = bit32.rshift(self.b, len)
+			return ret
+		end,
+	}
+
+	bs.buf = input
 	bs.len = bs.buf:len()
 	return bs
 end
 
-local function hufftable_create(depths)
+local function hufftable_create(depths: { number }): ({ number }, number)
 	local nvalues = #depths
 	local nbits = 1
 	local bl_count = {}
@@ -85,7 +85,7 @@ local function hufftable_create(depths)
 		end
 		bl_count[d] = (bl_count[d] or 0) + 1
 	end
-	local table = {}
+	local tab = {}
 	local code = 0
 	bl_count[0] = 0
 	for i = 1, nbits do
@@ -99,18 +99,25 @@ local function hufftable_create(depths)
 			local code2 = next_code[len]
 			local rcode = 0
 			for j = 1, len do
-				rcode = rcode + bit.lshift(bit.band(1, bit.rshift(code2, j - 1)), len - j)
+				rcode = rcode + bit32.lshift(bit32.band(1, bit32.rshift(code2, j - 1)), len - j)
 			end
 			for j = 0, 2 ^ nbits - 1, 2 ^ len do
-				table[j + rcode] = e
+				tab[j + rcode] = e
 			end
 			next_code[len] = next_code[len] + 1
 		end
 	end
-	return table, nbits
+	return tab, nbits
 end
 
-local function block_loop(out, bs, nlit, ndist, littable, disttable)
+local function block_loop(
+	out: { number },
+	bs: BitStream,
+	nlit: number,
+	ndist: number,
+	littable: { number },
+	disttable: { number }
+)
 	local lit
 	repeat
 		lit = bs:getv(littable, nlit)
@@ -123,8 +130,8 @@ local function block_loop(out, bs, nlit, ndist, littable, disttable)
 			if lit < 265 then
 				size = size + lit - 257
 			elseif lit < 285 then
-				nbits = bit.rshift(lit - 261, 2)
-				size = size + bit.lshift(bit.band(lit - 261, 3) + 4, nbits)
+				nbits = bit32.rshift(lit - 261, 2)
+				size = size + bit32.lshift(bit32.band(lit - 261, 3) + 4, nbits)
 			else
 				size = 258
 			end
@@ -135,8 +142,8 @@ local function block_loop(out, bs, nlit, ndist, littable, disttable)
 			if v < 4 then
 				dist = dist + v
 			else
-				nbits = bit.rshift(v - 2, 1)
-				dist = dist + bit.lshift(bit.band(v, 1) + 2, nbits)
+				nbits = bit32.rshift(v - 2, 1)
+				dist = dist + bit32.lshift(bit32.band(v, 1) + 2, nbits)
 				dist = dist + bs:getb(nbits)
 			end
 			local p = #out - dist + 1
@@ -149,7 +156,7 @@ local function block_loop(out, bs, nlit, ndist, littable, disttable)
 	until lit == 256
 end
 
-local function block_dynamic(out, bs)
+local function block_dynamic(out: { number }, bs: BitStream)
 	local order = { 17, 18, 19, 1, 9, 8, 10, 7, 11, 6, 12, 5, 13, 4, 14, 3, 15, 2, 16 }
 	local hlit = 257 + bs:getb(5)
 	local hdist = 1 + bs:getb(5)
@@ -200,7 +207,7 @@ local function block_dynamic(out, bs)
 	block_loop(out, bs, nlit, ndist, littable, disttable)
 end
 
-local function block_static(out, bs)
+local function block_static(out: { number }, bs: BitStream)
 	local cnt = { 144, 112, 24, 8 }
 	local dpt = { 8, 9, 7, 8 }
 	local depths = {}
@@ -219,14 +226,14 @@ local function block_static(out, bs)
 	block_loop(out, bs, nlit, ndist, littable, disttable)
 end
 
-local function block_uncompressed(out, bs)
-	bs:flushb(bit.band(bs.n, 7))
+local function block_uncompressed(out: { number }, bs: BitStream)
+	bs:flushb(bit32.band(bs.n, 7))
 	local len = bs:getb(16)
 	if bs.n > 0 then
 		error("Unexpected.. should be zero remaining bits in buffer.")
 	end
 	local nlen = bs:getb(16)
-	if bit.bxor(len, nlen) ~= 65535 then
+	if bit32.bxor(len, nlen) ~= 65535 then
 		error("LEN and NLEN don't match")
 	end
 	for i = bs.pos, bs.pos + len - 1 do
@@ -235,7 +242,7 @@ local function block_uncompressed(out, bs)
 	bs.pos = bs.pos + len
 end
 
-function inflate.main(bs)
+function inflate.main(bs: BitStream): { number }
 	local last, type
 	local output = {}
 	repeat
@@ -251,28 +258,31 @@ function inflate.main(bs)
 			error("unsupported block type")
 		end
 	until last == 1
-	bs:flushb(bit.band(bs.n, 7))
+	bs:flushb(bit32.band(bs.n, 7))
 	return output
 end
 
-local crc32_table
-function inflate.crc32(s, crc)
-	if not crc32_table then
+local crc32_table: { [number]: number } = {}
+function inflate.crc32(s: string): number
+	if crc32_table[0] == nil then
 		crc32_table = {}
 		for i = 0, 255 do
 			local r = i
 			for _ = 1, 8 do
-				r = bit.bxor(bit.rshift(r, 1), bit.band(0xedb88320, bit.bnot(bit.band(r, 1) - 1)))
+				r = bit32.bxor(
+					bit32.rshift(r, 1),
+					bit32.band(0xedb88320, bit32.bnot(bit32.band(r, 1) - 1))
+				)
 			end
 			crc32_table[i] = r
 		end
 	end
-	crc = bit.bnot(crc or 0)
+	local crc = bit32.bnot(0)
 	for i = 1, #s do
 		local c = s:byte(i)
-		crc = bit.bxor(crc32_table[bit.bxor(c, bit.band(crc, 0xff))], bit.rshift(crc, 8))
+		crc = bit32.bxor(crc32_table[bit32.bxor(c, bit32.band(crc, 0xff))], bit32.rshift(crc, 8))
 	end
-	crc = bit.bnot(crc)
+	crc = bit32.bnot(crc)
 	if crc < 0 then
 		-- in Lua < 5.2, sign extension was performed
 		crc = crc + 4294967296
