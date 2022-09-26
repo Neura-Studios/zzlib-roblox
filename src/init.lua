@@ -70,7 +70,6 @@ local function inflate_gzip(bs: BitStream)
 	end
 	local result = arraytostr(infl.main(bs))
 	local crc = bs:getb(8) + 256 * (bs:getb(8) + 256 * (bs:getb(8) + 256 * bs:getb(8)))
-	bs:close()
 	if crc ~= infl.crc32(result) then
 		error("checksum verification failed")
 	end
@@ -107,7 +106,6 @@ local function inflate_zlib(bs: BitStream)
 	bs.pos = 3
 	local result = arraytostr(infl.main(bs))
 	local adler = ((bs:getb(8) * 256 + bs:getb(8)) * 256 + bs:getb(8)) * 256 + bs:getb(8)
-	bs:close()
 	if adler ~= adler32(result) then
 		error("checksum verification failed")
 	end

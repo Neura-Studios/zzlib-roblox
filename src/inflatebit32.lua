@@ -10,7 +10,6 @@
 local inflate = {}
 
 export type BitStream = {
-	file: any,
 	buf: string,
 	len: number,
 	pos: number,
@@ -20,12 +19,10 @@ export type BitStream = {
 	peekb: any,
 	getb: any,
 	getv: any,
-	close: any,
 }
 
-function inflate.bitstream_init(file)
+function inflate.bitstream_init(input)
 	local bs: BitStream = {
-		file = file, -- the open file handle
 		buf = "", -- character buffer
 		len = 0, -- length of character buffer
 		pos = 1, -- position in char buffer
@@ -41,7 +38,6 @@ function inflate.bitstream_init(file)
 	function bs:peekb(n)
 		while self.n < n do
 			if self.pos > self.len then
-				self.buf = self.file:read(4096)
 				self.len = self.buf:len()
 				self.pos = 1
 			end
@@ -67,17 +63,8 @@ function inflate.bitstream_init(file)
 		self.b = bit32.rshift(self.b, len)
 		return ret
 	end
-	function bs:close()
-		if self.file then
-			self.file:close()
-		end
-	end
-	if type(file) == "string" then
-		bs.file = nil
-		bs.buf = file
-	else
-		bs.buf = file:read(4096)
-	end
+
+	bs.buf = input
 	bs.len = bs.buf:len()
 	return bs
 end
