@@ -15,10 +15,10 @@ export type BitStream = {
 	pos: number,
 	b: number,
 	n: number,
-	flushb: any,
-	peekb: any,
-	getb: any,
-	getv: any,
+	flushb: (self: BitStream, number) -> (),
+	peekb: (self: BitStream, number) -> (number),
+	getb: (self: BitStream, number) -> (number),
+	getv: (self: BitStream, { [any]: any }, number) -> (number),
 }
 
 function inflate.bitstream_init(input)
@@ -28,41 +28,45 @@ function inflate.bitstream_init(input)
 		pos = 1, -- position in char buffer
 		b = 0, -- bit buffer
 		n = 0, -- number of bits in buffer
-	}
-	-- get rid of n first bits
-	function bs:flushb(n)
-		self.n = self.n - n
-		self.b = bit32.rshift(self.b, n)
-	end
-	-- peek a number of n bits from stream
-	function bs:peekb(n)
-		while self.n < n do
-			if self.pos > self.len then
-				self.len = self.buf:len()
-				self.pos = 1
+
+		-- get rid of n first bits
+		flushb = function(self, n)
+			self.n = self.n - n
+			self.b = bit32.rshift(self.b, n)
+		end,
+
+		-- peek a number of n bits from stream
+		peekb = function(self, n)
+			while self.n < n do
+				if self.pos > self.len then
+					self.len = self.buf:len()
+					self.pos = 1
+				end
+				self.b = self.b + bit32.lshift(self.buf:byte(self.pos), self.n)
+				self.pos = self.pos + 1
+				self.n = self.n + 8
 			end
-			self.b = self.b + bit32.lshift(self.buf:byte(self.pos), self.n)
-			self.pos = self.pos + 1
-			self.n = self.n + 8
-		end
-		return bit32.band(self.b, bit32.lshift(1, n) - 1)
-	end
-	-- get a number of n bits from stream
-	function bs:getb(n)
-		local ret = bs:peekb(n)
-		self.n = self.n - n
-		self.b = bit32.rshift(self.b, n)
-		return ret
-	end
-	-- get next variable-size of maximum size=n element from stream, according to Huffman table
-	function bs:getv(hufftable, n)
-		local e = hufftable[bs:peekb(n)]
-		local len = bit32.band(e, 15)
-		local ret = bit32.rshift(e, 4)
-		self.n = self.n - len
-		self.b = bit32.rshift(self.b, len)
-		return ret
-	end
+			return bit32.band(self.b, bit32.lshift(1, n) - 1)
+		end,
+
+		-- get a number of n bits from stream
+		getb = function(self, n)
+			local ret = self:peekb(n)
+			self.n = self.n - n
+			self.b = bit32.rshift(self.b, n)
+			return ret
+		end,
+
+		-- get next variable-size of maximum size=n element from stream, according to Huffman table
+		getv = function(self, hufftable, n)
+			local e = hufftable[self:peekb(n)]
+			local len = bit32.band(e, 15)
+			local ret = bit32.rshift(e, 4)
+			self.n = self.n - len
+			self.b = bit32.rshift(self.b, len)
+			return ret
+		end,
+	}
 
 	bs.buf = input
 	bs.len = bs.buf:len()
