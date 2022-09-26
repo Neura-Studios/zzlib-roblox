@@ -18,7 +18,7 @@ export type BitStream = {
 	flushb: (self: BitStream, number) -> (),
 	peekb: (self: BitStream, number) -> (number),
 	getb: (self: BitStream, number) -> (number),
-	getv: (self: BitStream, { [any]: any }, number) -> (number),
+	getv: (self: BitStream, { number }, number) -> (number),
 }
 
 function inflate.bitstream_init(input)
@@ -73,7 +73,7 @@ function inflate.bitstream_init(input)
 	return bs
 end
 
-local function hufftable_create(depths)
+local function hufftable_create(depths: { number }): ({ number }, number)
 	local nvalues = #depths
 	local nbits = 1
 	local bl_count = {}
@@ -85,7 +85,7 @@ local function hufftable_create(depths)
 		end
 		bl_count[d] = (bl_count[d] or 0) + 1
 	end
-	local table = {}
+	local tab = {}
 	local code = 0
 	bl_count[0] = 0
 	for i = 1, nbits do
@@ -102,15 +102,22 @@ local function hufftable_create(depths)
 				rcode = rcode + bit32.lshift(bit32.band(1, bit32.rshift(code2, j - 1)), len - j)
 			end
 			for j = 0, 2 ^ nbits - 1, 2 ^ len do
-				table[j + rcode] = e
+				tab[j + rcode] = e
 			end
 			next_code[len] = next_code[len] + 1
 		end
 	end
-	return table, nbits
+	return tab, nbits
 end
 
-local function block_loop(out, bs, nlit, ndist, littable, disttable)
+local function block_loop(
+	out: { number },
+	bs: BitStream,
+	nlit: number,
+	ndist: number,
+	littable: { number },
+	disttable: { number }
+)
 	local lit
 	repeat
 		lit = bs:getv(littable, nlit)
@@ -149,7 +156,7 @@ local function block_loop(out, bs, nlit, ndist, littable, disttable)
 	until lit == 256
 end
 
-local function block_dynamic(out, bs)
+local function block_dynamic(out: { number }, bs: BitStream)
 	local order = { 17, 18, 19, 1, 9, 8, 10, 7, 11, 6, 12, 5, 13, 4, 14, 3, 15, 2, 16 }
 	local hlit = 257 + bs:getb(5)
 	local hdist = 1 + bs:getb(5)
@@ -200,7 +207,7 @@ local function block_dynamic(out, bs)
 	block_loop(out, bs, nlit, ndist, littable, disttable)
 end
 
-local function block_static(out, bs)
+local function block_static(out: { number }, bs: BitStream)
 	local cnt = { 144, 112, 24, 8 }
 	local dpt = { 8, 9, 7, 8 }
 	local depths = {}
@@ -219,7 +226,7 @@ local function block_static(out, bs)
 	block_loop(out, bs, nlit, ndist, littable, disttable)
 end
 
-local function block_uncompressed(out, bs)
+local function block_uncompressed(out: { number }, bs: BitStream)
 	bs:flushb(bit32.band(bs.n, 7))
 	local len = bs:getb(16)
 	if bs.n > 0 then
@@ -235,7 +242,7 @@ local function block_uncompressed(out, bs)
 	bs.pos = bs.pos + len
 end
 
-function inflate.main(bs)
+function inflate.main(bs: BitStream): { number }
 	local last, type
 	local output = {}
 	repeat
@@ -255,9 +262,9 @@ function inflate.main(bs)
 	return output
 end
 
-local crc32_table
-function inflate.crc32(s, crc)
-	if not crc32_table then
+local crc32_table: { [number]: number } = {}
+function inflate.crc32(s: string): number
+	if crc32_table[0] == nil then
 		crc32_table = {}
 		for i = 0, 255 do
 			local r = i
@@ -270,7 +277,7 @@ function inflate.crc32(s, crc)
 			crc32_table[i] = r
 		end
 	end
-	crc = bit32.bnot(crc or 0)
+	local crc = bit32.bnot(0)
 	for i = 1, #s do
 		local c = s:byte(i)
 		crc = bit32.bxor(crc32_table[bit32.bxor(c, bit32.band(crc, 0xff))], bit32.rshift(crc, 8))

@@ -12,7 +12,7 @@ type BitStream = infl.BitStream
 
 local zzlib = {}
 
-local function arraytostr(array)
+local function arraytostr(array: { number })
 	local tmp = {}
 	local size = #array
 	local pos = 1
@@ -77,7 +77,7 @@ local function inflate_gzip(bs: BitStream)
 end
 
 -- compute Adler-32 checksum
-local function adler32(s)
+local function adler32(s: string)
 	local s1 = 1
 	local s2 = 0
 	for i = 1, #s do
@@ -112,7 +112,7 @@ local function inflate_zlib(bs: BitStream)
 	return result
 end
 
-local function inflate_raw(buf, offset, crc)
+local function inflate_raw(buf: string, offset: number, crc: number?)
 	local bs = infl.bitstream_init(buf)
 	bs.pos = offset
 	local result = arraytostr(infl.main(bs))
@@ -161,7 +161,7 @@ local function nextfile(buf, p)
 	return p, name, offset, size, packed, crc
 end
 
-function zzlib.files(buf)
+function zzlib.files(buf: string)
 	local p = #buf - 21
 	if int4le(buf, p) ~= 0x06054b50 then
 		-- not sure there is a reliable way to locate the end of central directory record
@@ -172,27 +172,28 @@ function zzlib.files(buf)
 	return nextfile, buf, cdoffset
 end
 
-function zzlib.unzip(buf, arg1, arg2)
+function zzlib.unzip(buf: string, arg1: (string | number), arg2: number?)
 	if type(arg1) == "number" then
 		-- mode 1: unpack data from specified position in zip file
 		return inflate_raw(buf, arg1, arg2)
-	end
-	-- mode 2: search and unpack file from zip file
-	local filename = arg1
-	for _, name, offset, size, packed, crc in zzlib.files(buf) do
-		if name == filename then
-			local result
-			if not packed then
-				-- no compression
-				result = buf:sub(offset, offset + size - 1)
-			else
-				-- DEFLATE compression
-				result = inflate_raw(buf, offset, crc)
+	else
+		-- mode 2: search and unpack file from zip file
+		local filename = arg1
+		for _, name, offset, size, packed, crc in zzlib.files(buf) do
+			if name == filename then
+				local result
+				if not packed then
+					-- no compression
+					result = buf:sub(offset, offset + size - 1)
+				else
+					-- DEFLATE compression
+					result = inflate_raw(buf, offset, crc)
+				end
+				return result
 			end
-			return result
 		end
+		error("file '" .. filename .. "' not found in ZIP archive")
 	end
-	error("file '" .. filename .. "' not found in ZIP archive")
 end
 
 return zzlib
